@@ -5,8 +5,15 @@ on:
     types: [published]
 
 jobs:
+  # Gate the release on the full test + lint suite. If anything fails, the build
+  # and PyPI publish below never run.
+  test:
+    name: Test suite
+    uses: ./.github/workflows/tests.yml
+
   build:
     name: Build distribution
+    needs: test
     runs-on: ubuntu-latest
 
     steps:
