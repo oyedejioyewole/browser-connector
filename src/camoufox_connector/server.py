@@ -150,7 +150,40 @@ Environment variables:
         type=str,
         default=None,
         metavar="URL",
-        help="Proxy URL (http://user:pass@host:port)",
+        help="Single proxy URL (http://user:pass@host:port)",
+    )
+
+    parser.add_argument(
+        "--proxies",
+        type=str,
+        default=None,
+        metavar="URLS",
+        help="Comma-separated list of proxy URLs for a rotating pool "
+        "(each instance gets one). Takes precedence over --proxy.",
+    )
+
+    # Priority / lease configuration
+    parser.add_argument(
+        "--max-concurrency-per-instance",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Max simultaneous /acquire leases per browser (default: 1)",
+    )
+
+    parser.add_argument(
+        "--preemption",
+        action="store_true",
+        default=None,
+        help="Let higher-priority /acquire requests preempt lower-priority leases",
+    )
+
+    parser.add_argument(
+        "--preempt-grace",
+        type=float,
+        default=None,
+        metavar="SECONDS",
+        help="Grace period before a preempted lease is force-reclaimed (default: 10)",
     )
 
     # Configuration file
@@ -221,12 +254,15 @@ class Server:
             print(f"    - {endpoint}")
         print()
         print("  API Routes:")
-        print(f"    GET  /         - Server info")
-        print(f"    GET  /health   - Health check")
-        print(f"    GET  /next     - Get next browser (round-robin)")
-        print(f"    GET  /endpoints - List all endpoints")
-        print(f"    GET  /stats    - Pool statistics")
-        print(f"    POST /restart/{{n}} - Restart instance N")
+        print("    GET  /         - Server info")
+        print("    GET  /health   - Health check")
+        print("    GET  /next     - Get next browser (round-robin)")
+        print("    GET  /acquire  - Acquire a priority lease (?priority=&timeout=)")
+        print("    POST /release/{lease_id} - Release a lease")
+        print("    GET  /lease/{lease_id}   - Inspect a lease")
+        print("    GET  /endpoints - List all endpoints")
+        print("    GET  /stats    - Pool statistics")
+        print("    POST /restart/{n} - Restart instance N (?rotate_proxy=&blacklist=)")
         print()
         print("=" * 60)
         print()

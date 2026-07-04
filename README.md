@@ -84,6 +84,8 @@ Camoufox is a powerful anti-detect browser based on Firefox, but its Python-only
 - **Multi-language support** - Connect from Node.js, Go, Python, Java, .NET, or any Playwright-compatible language
 - **Single & Pool modes** - One persistent browser or multiple rotating browsers
 - **Round-robin load balancing** - Distribute connections across browser instances
+- **Request priority** - Reserve browsers with a priority; higher-priority requests jump the queue and can (optionally) preempt lower-priority ones
+- **Proxy pool** - Assign a different proxy per instance, with runtime blacklist + rotation
 - **Fingerprint rotation** - Each browser instance has a unique fingerprint
 - **Health check API** - Monitor browser health and statistics
 - **Docker ready** - Production-ready containerization
@@ -238,6 +240,72 @@ camoufox-connector --mode pool --pool-size 5
 
 > **Note:** Since each browser instance maintains its own fingerprint, use pool mode when you need fingerprint rotation between requests. Use single mode when you need session persistence.
 
+## Proxy Pool
+
+Instead of a single proxy shared by every browser, you can supply a **list** of
+proxies. Each instance is assigned one proxy (round-robin), so a 5-browser pool
+can egress from 5 different IPs.
+
+```bash
+# One proxy per instance
+camoufox-connector --mode pool --pool-size 3 \
+  --proxies "http://user:pass@host1:port,http://user:pass@host2:port,http://user:pass@host3:port"
+```
+
+```bash
+# Or via env (comma or newline separated); or a JSON list in --config
+export CAMOUFOX_PROXIES="http://host1:port,http://host2:port"
+```
+
+`--proxies` takes precedence over `--proxy`. If a proxy starts failing, rotate an
+instance onto a different one from the pool — and optionally blacklist the bad
+proxy so it isn't reused:
+
+```bash
+# Relaunch instance 0 with a new proxy, blacklisting its current one
+curl -X POST "http://localhost:8080/restart/0?blacklist=true"
+```
+
+`/stats` reports proxy assignments and the blacklist (credentials are masked).
+
+## Request Priority (leases)
+
+The `/acquire` + `/release` API lets you reserve a browser with a **priority**.
+When the pool is at capacity, acquirers wait in a priority-ordered queue, so a
+higher-priority request is served before lower-priority ones as soon as a browser
+frees up. This is separate from `/next` (which is unchanged and never blocks).
+
+```bash
+# Reserve a browser at priority 5, waiting up to 30s for capacity
+curl "http://localhost:8080/acquire?priority=5&timeout=30"
+# -> {"endpoint":"ws://...","lease_id":"ab12...","instance":2,"priority":5}
+
+# ... connect Playwright to endpoint, do your work, then:
+curl -X POST "http://localhost:8080/release/ab12..."
+```
+
+Each instance serves `--max-concurrency-per-instance` leases at once (default 1,
+i.e. one lease = one exclusive browser).
+
+### Preemption (opt-in)
+
+With `--preemption`, a higher-priority `/acquire` can reclaim a browser from a
+**strictly lower-priority** lease when the pool is full. The lower-priority holder
+is flagged `preempted` (visible via `GET /lease/{lease_id}`) and given a grace
+period (`--preempt-grace`, default 10s) to `/release` voluntarily; if it doesn't,
+the browser is restarted so the high-priority request gets a clean instance.
+
+```bash
+camoufox-connector --mode pool --pool-size 5 --preemption --preempt-grace 15
+```
+
+> **How this maps to the architecture:** the connector hands out browser
+> endpoints — clients connect to the browser directly, so it can't transparently
+> pause and resume an opaque in-flight session. Preemption is therefore
+> *cooperative* (yield within the grace window) with a hard fallback (restart).
+> A well-behaved high-value client should poll `GET /lease/{id}` and release
+> promptly when `preempted` is `true`.
+
 ## HTTP API
 
 The connector exposes an HTTP API for health monitoring and browser management.
@@ -247,9 +315,12 @@ The connector exposes an HTTP API for health monitoring and browser management.
 | `/` | GET | Server info and version |
 | `/health` | GET | Health check (returns 200/503) |
 | `/next` | GET | Get next browser endpoint (round-robin) |
+| `/acquire` | GET/POST | Acquire a **priority** lease on a browser (`?priority=&timeout=`) |
+| `/release/{lease_id}` | POST | Release a previously acquired lease |
+| `/lease/{lease_id}` | GET | Inspect a lease (incl. whether it's been asked to yield) |
 | `/endpoints` | GET | List all available endpoints |
-| `/stats` | GET | Pool statistics and connection counts |
-| `/restart/{n}` | POST | Restart browser instance N |
+| `/stats` | GET | Pool statistics, lease + proxy state |
+| `/restart/{n}` | POST | Restart browser instance N (`?rotate_proxy=&blacklist=`) |
 
 ### Example API Responses
 
@@ -309,7 +380,11 @@ Options:
   --humanize             Enable humanization (default)
   --no-humanize          Disable humanization
   --block-images         Block image loading
-  --proxy URL            Proxy URL (http://user:pass@host:port)
+  --proxy URL            Single proxy URL (http://user:pass@host:port)
+  --proxies URLS         Comma-separated proxy pool (one per instance)
+  --max-concurrency-per-instance N   Max simultaneous /acquire leases per browser (default 1)
+  --preemption           Let higher-priority /acquire requests preempt lower ones
+  --preempt-grace SECONDS            Grace before a preempted lease is reclaimed (default 10)
   --config FILE          Load configuration from JSON file
   --debug                Enable debug logging
 ```
