@@ -261,13 +261,13 @@ config = {{k: v for k, v in config.items() if v is not None}}
 
 # Launch the server (same as camoufox.server.launch_server but with filtered config)
 LAUNCH_SCRIPT = LOCAL_DATA / "launchServer.js"
-_nodejs = compute_driver_executable()[0]
-nodejs = _nodejs[0] if isinstance(_nodejs, tuple) else _nodejs
+nodejs, _cli_path = compute_driver_executable()
+driver_package_path = Path(_cli_path).parent
 
 data = orjson.dumps(to_camel_case_dict(config))
 
 process = subprocess.Popen(
-    [nodejs, str(LAUNCH_SCRIPT)],
+    [nodejs, str(LAUNCH_SCRIPT), driver_package_path],
     cwd=Path(nodejs).parent / "package",
     stdin=subprocess.PIPE,
     text=True,
