@@ -2,7 +2,9 @@ name: Tests
 
 on:
   push:
-    branches: [main]
+    branches:
+      - edge
+      - main
   pull_request:
   # Allow other workflows (e.g. the release/publish flow) to run this as a gate.
   workflow_call:
