@@ -2,9 +2,13 @@ name: Docker
 
 on:
   push:
-    branches: ["edge"]
+    branches: edge
     # Publish semver tags as releases.
     tags: ["v*.*.*"]
+    paths:
+      - "src/**"
+      - "requirements.txt"
+      - "Dockerfile"
 
 env:
   # Use docker.io for Docker Hub if empty
@@ -13,8 +17,13 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  # Gate the release on the full test + lint suite. If anything fails, the build
+  # and GitHub Container Registry publish below never run.
+  test:
+    name: Test suite
+    uses: ./.github/workflows/tests.yml
+
   build:
-    if: github.event_name == 'push' && github.ref_type == 'tag'
     runs-on: ubuntu-latest
     permissions:
       contents: read
