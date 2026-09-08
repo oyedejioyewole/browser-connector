@@ -13,7 +13,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Pre-download camoufox browser binaries to avoid runtime downloads
 # This prevents multiple pool instances from downloading simultaneously
-# It is redundant but a nice fallback in case the base image doesn't have the binaries pre-downloaded
+# It is redundant but a nice fallback in case the base image is outdated
 RUN camoufox fetch
 
 # Install the application

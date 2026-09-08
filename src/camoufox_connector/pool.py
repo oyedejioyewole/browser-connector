@@ -272,8 +272,8 @@ process = subprocess.Popen(
     text=True,
 )
 if process.stdin:
-    process.stdin.write(base64.b64encode(data).decode())
-    process.stdin.close()
+    process.stdin.write(base64.b64encode(data).decode() + "\\n")
+    process.stdin.flush()
 
 process.wait()
 raise RuntimeError("Server process terminated unexpectedly")
