@@ -20,8 +20,7 @@ RUN camoufox fetch
 COPY . .
 RUN pip install --no-cache-dir -e .
 
-COPY scripts/ ./
-RUN chmod +x ./docker-entrypoint.sh
+RUN chmod +x ./scripts/docker-entrypoint.sh
 
 # Expose ports
 # 8080: HTTP API
@@ -45,7 +44,7 @@ ENV CAMOUFOX_MODE=single \
     CAMOUFOX_BLOCK_IMAGES=false
 
 # Reset the path to entrypoint script in base image
-ENTRYPOINT ["./docker-entrypoint.sh"]
+ENTRYPOINT ["./scripts/docker-entrypoint.sh"]
 
 # Run with xvfb for headless support
 CMD ["python", "-m", "camoufox_connector.server"]
