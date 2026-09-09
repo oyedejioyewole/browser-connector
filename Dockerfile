@@ -2,7 +2,7 @@
 # Apify + Python + Playwright + Camoufox base image
 FROM apify/actor-python-playwright-camoufox:latest
 
-RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends curl socat && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
 WORKDIR /app
@@ -19,6 +19,9 @@ RUN camoufox fetch
 # Install the application
 COPY . .
 RUN pip install --no-cache-dir -e .
+
+COPY scripts/ ./
+RUN chmod +x ./docker-entrypoint.sh
 
 # Expose ports
 # 8080: HTTP API
@@ -42,7 +45,7 @@ ENV CAMOUFOX_MODE=single \
     CAMOUFOX_BLOCK_IMAGES=false
 
 # Reset the path to entrypoint script in base image
-ENTRYPOINT ["/usr/src/app/xvfb-entrypoint.sh"]
+ENTRYPOINT ["./docker-entrypoint.sh"]
 
 # Run with xvfb for headless support
 CMD ["python", "-m", "camoufox_connector.server"]
