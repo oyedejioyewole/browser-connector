@@ -4,9 +4,10 @@ on:
   push:
     branches: edge
     paths:
-      - "src/**"
-      - "requirements.txt"
-      - "Dockerfile"
+      - scripts/**
+      - src/**
+      - requirements.txt
+      - Dockerfile
 
 env:
   # Use docker.io for Docker Hub if empty
