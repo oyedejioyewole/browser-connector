@@ -102,6 +102,11 @@ def test_to_camoufox_kwargs_geoip_true_with_proxy():
     assert kw["geoip"] is True
 
 
+def test_to_camoufox_kwargs_uses_virtual_display():
+    s = _settings()
+    assert s.to_camoufox_kwargs()["headless"] is False
+
+
 def test_priority_settings_defaults():
     s = _settings()
     assert s.max_concurrency_per_instance == 1

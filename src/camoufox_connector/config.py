@@ -24,18 +24,14 @@ logger = logging.getLogger(__name__)
 _PROXY_SCHEMES = ("http://", "https://", "socks5://")
 
 
-# A proxy URL must not contain whitespace, quotes, backslashes, or control chars.
-# Real proxy URLs never do (credentials are percent-encoded), and rejecting them
-# is defense-in-depth against a hostile/typo'd proxy string reaching the launcher.
+# Reject characters that cannot appear in a valid proxy URL.
 _PROXY_FORBIDDEN = re.compile(r"""[\s'"\\`\x00-\x1f]""")
 
 
 def _validate_proxy_url(v: str) -> str:
     """Validate a single proxy URL's scheme + shape, returning it unchanged."""
     if not v.startswith(_PROXY_SCHEMES):
-        raise ValueError(
-            f"Proxy must start with one of {', '.join(_PROXY_SCHEMES)}: {v!r}"
-        )
+        raise ValueError(f"Proxy must start with one of {', '.join(_PROXY_SCHEMES)}: {v!r}")
     if _PROXY_FORBIDDEN.search(v):
         raise ValueError(
             f"Proxy URL contains forbidden characters (whitespace/quotes/control): {v!r}"
@@ -100,12 +96,6 @@ class Settings(BaseSettings):
         description="Host to bind the HTTP API to",
     )
 
-    # Browser configuration
-    headless: bool = Field(
-        default=True,
-        description="Run browsers in headless mode",
-    )
-
     geoip: bool = Field(
         default=True,
         description="Enable GeoIP-based locale/timezone spoofing",
@@ -136,7 +126,7 @@ class Settings(BaseSettings):
         "over 'proxy' when both are set.",
     )
 
-    # Priority / lease configuration (for the /acquire + /release API)
+    # Lease settings for the /acquire and /release API.
     max_concurrency_per_instance: int = Field(
         default=1,
         ge=1,
@@ -229,7 +219,7 @@ class Settings(BaseSettings):
             _validate_proxy_url(p)
         return self
 
-    @model_validator(mode='after')
+    @model_validator(mode="after")
     def validate_geoip_requires_proxy(self) -> Settings:
         """Warn and disable geoip if no proxy (single or pool) is configured."""
         if self.geoip and not self.proxy_list:
@@ -274,7 +264,8 @@ class Settings(BaseSettings):
         since geoip has no meaning without an exit IP to derive location from.
         """
         kwargs = {
-            "headless": self.headless,
+            # Xvfb provides the display, so the remote server must use headful mode.
+            "headless": False,
             "geoip": self.geoip and bool(proxy),
             "humanize": self.humanize,
             "block_images": self.block_images,

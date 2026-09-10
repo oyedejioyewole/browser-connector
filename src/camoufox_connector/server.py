@@ -94,21 +94,6 @@ Environment variables:
         help="Starting port for browser WebSocket endpoints (default: 9222)",
     )
 
-    # Browser configuration
-    parser.add_argument(
-        "--headless",
-        action="store_true",
-        default=None,
-        help="Run browsers in headless mode (default: true)",
-    )
-
-    parser.add_argument(
-        "--no-headless",
-        dest="headless",
-        action="store_false",
-        help="Run browsers in headed mode",
-    )
-
     parser.add_argument(
         "--geoip",
         action="store_true",

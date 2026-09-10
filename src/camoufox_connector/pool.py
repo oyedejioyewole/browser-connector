@@ -96,8 +96,7 @@ class _Waiter:
     priority: int = field(compare=False, default=0)
     future: asyncio.Future = field(compare=False, default=None)
     cancelled: bool = field(compare=False, default=False)
-    # The lease this waiter preempted (if any), so it can be spared if this
-    # waiter gives up and no other waiter still needs the reclaimed slot.
+    # The lease this waiter asked to reclaim, if any.
     preempt_victim: Optional[Lease] = field(compare=False, default=None)
 
 
@@ -116,10 +115,10 @@ class BrowserPool:
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     _running: bool = False
 
-    # Proxy pool (assigns a proxy per instance; empty in single/no-proxy mode).
+    # Proxy pool. It is empty when no proxy is configured.
     _proxy_pool: ProxyPool = field(default_factory=ProxyPool)
 
-    # Priority /acquire state (guarded by _lock).
+    # Lease state protected by _lock.
     _leases: dict[str, Lease] = field(default_factory=dict)
     _waiters: list[_Waiter] = field(default_factory=list)
     _waiter_counter: itertools.count = field(default_factory=itertools.count)
@@ -215,25 +214,16 @@ class BrowserPool:
             raise
 
     def _generate_launcher_script(self, port: int, proxy: Optional[str] = None) -> str:
-        """Generate Python script to launch Camoufox server."""
+        """Generate a child-process script that launches the Camoufox server."""
         kwargs = self.settings.to_camoufox_kwargs(proxy=proxy)
         kwargs["port"] = port
 
-        # Build kwargs string, only including non-None values. Every value is
-        # emitted via repr() so strings are safely escaped -- a proxy URL (or any
-        # other string) can never break out of its literal and inject code into
-        # the generated launcher source. repr(True)/repr(1)/repr(1.0) are already
-        # valid Python literals, so this is uniform across types.
-        kwargs_items = []
-        for key, value in kwargs.items():
-            if value is not None:
-                kwargs_items.append(f"    {key}={value!r},")
+        # Emit values as Python literals so the child process receives the same
+        # configuration as the connector without shell parsing or interpolation.
+        kwargs_str = "\n".join(
+            f"{key}={value!r}," for key, value in kwargs.items() if value is not None
+        )
 
-        kwargs_str = "\n".join(kwargs_items)
-
-        # Custom launch script that filters None values from config
-        # This works around a bug in camoufox 0.4.11 where proxy=None
-        # gets serialized as null and breaks the Node.js server
         script = f"""
 import sys
 if sys.platform == 'win32':
@@ -241,42 +231,17 @@ if sys.platform == 'win32':
     sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer)
     sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer)
 
-import subprocess
-import base64
-import orjson
-from pathlib import Path
-from playwright._impl._driver import compute_driver_executable
-from camoufox.pkgman import LOCAL_DATA
-from camoufox.utils import launch_options
-from camoufox.server import to_camel_case_dict
+from camoufox.server import launch_server
+from camoufox.virtdisplay import VirtualDisplay
 
-# Get config from launch_options
-config = launch_options(
-{kwargs_str}
-)
-
-# Filter out None values (workaround for camoufox bug)
-config = {{k: v for k, v in config.items() if v is not None}}
-
-# Launch the server (same as camoufox.server.launch_server but with filtered config)
-LAUNCH_SCRIPT = LOCAL_DATA / "launchServer.js"
-nodejs, cli_path = compute_driver_executable()
-driver_package_path = Path(cli_path).parent
-
-data = orjson.dumps(to_camel_case_dict(config))
-
-process = subprocess.Popen(
-    [nodejs, str(LAUNCH_SCRIPT), driver_package_path],
-    cwd=driver_package_path,
-    stdin=subprocess.PIPE,
-    text=True,
-)
-if process.stdin:
-    process.stdin.write(base64.b64encode(data).decode() + "\\n")
-    process.stdin.flush()
-
-process.wait()
-raise RuntimeError("Server process terminated unexpectedly")
+virtual_display = VirtualDisplay(debug={self.settings.debug!r})
+try:
+    launch_server(
+    {kwargs_str}
+    virtual_display=virtual_display.get(),
+    )
+finally:
+    virtual_display.kill()
 """
         return script.strip()
 
@@ -467,23 +432,7 @@ raise RuntimeError("Server process terminated unexpectedly")
 
             return None
 
-    # ------------------------------------------------------------------
-    # Priority acquisition API (/acquire + /release)
-    #
-    # This is an *opt-in* layer on top of the round-robin /next handout. A
-    # client acquires a lease on a browser (optionally with a priority); when
-    # every instance is at capacity, acquirers wait in a priority-ordered queue
-    # so a higher-priority request is served before lower-priority ones as soon
-    # as capacity frees. With preemption enabled, a higher-priority acquire can
-    # reclaim a browser from a strictly-lower-priority lease.
-    #
-    # NOTE: the connector is an endpoint *handout* bridge -- clients connect to
-    # the browser directly, so it cannot pause/resume an opaque in-flight session.
-    # Preemption is therefore cooperative (the holder is asked to yield and can
-    # release within a grace window) and, failing that, the browser is restarted
-    # to guarantee the high-priority request gets a clean instance. /next is
-    # completely unaffected by any of this.
-    # ------------------------------------------------------------------
+    # /acquire and /release manage priority leases. /next is unchanged.
 
     def _find_free_instance_locked(self) -> Optional[BrowserInstance]:
         """Return a healthy instance below its lease capacity (round-robin)."""
@@ -571,17 +520,15 @@ raise RuntimeError("Server process terminated unexpectedly")
 
             # No free capacity.
             if timeout <= 0:
-                # Non-blocking request: don't preempt (that takes a grace period
-                # the caller won't wait for) and don't queue -- just report busy.
+                # Do not preempt or queue a request that will not wait.
                 return None
 
-            # Bound the queue so a client cannot grow pool state without limit.
+            # Limit the number of queued requests.
             self._compact_waiters_locked()
             if sum(1 for w in self._waiters if not w.cancelled) >= self.settings.max_waiters:
                 return None
 
-            # Blocking request: optionally preempt a lower-priority lease, then
-            # queue a waiter to be served when capacity frees.
+            # Queue the request and optionally preempt a lower-priority lease.
             loop = asyncio.get_running_loop()
             waiter = _Waiter(
                 sort_key=(-priority, next(self._waiter_counter)),
@@ -602,31 +549,27 @@ raise RuntimeError("Server process terminated unexpectedly")
                 self._cancel_waiter_locked(waiter)
             return None
         except asyncio.CancelledError:
-            # The awaiting task was cancelled (e.g. client disconnect / shutdown).
-            # Clean up, then re-raise so cancellation propagates per the contract.
+            # Remove the waiter, then pass the cancellation to the caller.
             async with self._lock:
                 self._cancel_waiter_locked(waiter)
             raise
 
     def _cancel_waiter_locked(self, waiter: _Waiter) -> None:
-        """Mark a waiter cancelled; reconcile the lease/preemption it was tied to."""
+        """Cancel a waiter and undo its pending lease or preemption."""
         waiter.cancelled = True
         if waiter.future is not None and waiter.future.done() and not waiter.future.cancelled():
-            # It was granted a lease right as we timed out -- give it back.
+            # The waiter got a lease just before it timed out. Release it.
             lease = waiter.future.result()
             self._release_lease_locked(lease.lease_id)
             return
 
-        # This waiter gave up without a lease. If it triggered a preemption purely
-        # for itself and no other waiter still needs the reclaimed slot, spare the
-        # victim: cancel the pending reclaim and un-flag it, so a lower-priority
-        # session is not destroyed for a requester that already left.
+        # Undo a preemption that no other waiting request needs.
         victim = waiter.preempt_victim
         waiter.preempt_victim = None
         if victim is None:
             return
         if any(not w.cancelled and w is not waiter for w in self._waiters):
-            return  # another queued waiter still benefits from the reclaim
+            return  # Another waiter still needs the reclaimed slot.
         live = self._leases.get(victim.lease_id)
         if live is not None and live.reclaim_task is not None and not live.reclaim_task.done():
             live.reclaim_task.cancel()
@@ -634,7 +577,7 @@ raise RuntimeError("Server process terminated unexpectedly")
             live.preempted.clear()
 
     def _compact_waiters_locked(self) -> None:
-        """Drop cancelled waiters buried in the heap so it can't grow unbounded."""
+        """Remove cancelled waiters so the queue does not grow forever."""
         if len(self._waiters) > 16:
             cancelled = sum(1 for w in self._waiters if w.cancelled)
             if cancelled * 2 > len(self._waiters):
@@ -688,8 +631,7 @@ raise RuntimeError("Server process terminated unexpectedly")
             self._leases.pop(lease.lease_id, None)
             inst = self.instances[index]
             inst.active_leases = max(0, inst.active_leases - 1)
-            # Restart only if this was the last lease on the instance, so we
-            # don't nuke unrelated leases sharing a high-capacity instance.
+            # Restart only when no other lease uses this instance.
             if self.settings.restart_on_preempt and inst.active_leases == 0:
                 restart_needed = True
             else:

@@ -46,7 +46,7 @@ class ProxyPool:
     """
 
     def __init__(self, proxies: Optional[list[str]] = None):
-        # Preserve order, drop duplicates and blanks.
+        # Keep the first copy of each non-empty proxy.
         seen: set[str] = set()
         self._proxies: list[str] = []
         for p in proxies or []:
@@ -129,7 +129,6 @@ class ProxyPool:
             "total": self.size,
             "blacklisted": [mask_proxy_url(p) for p in sorted(self._blacklist)],
             "assignments": {
-                str(idx): mask_proxy_url(proxy)
-                for idx, proxy in sorted(self._assigned.items())
+                str(idx): mask_proxy_url(proxy) for idx, proxy in sorted(self._assigned.items())
             },
         }

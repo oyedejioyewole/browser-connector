@@ -20,8 +20,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Bound on /acquire priority magnitude -- a plain queue key, comfortably wider
-# than any real priority scheme, used to reject absurd values.
+# Limit priority values to a practical range.
 _PRIORITY_LIMIT = 1_000_000_000
 
 
@@ -63,10 +62,12 @@ def create_health_app(pool: BrowserPool) -> Starlette:
         """
         all_endpoints = pool.get_all_endpoints()
 
-        return JSONResponse({
-            "endpoints": all_endpoints,
-            "count": len(all_endpoints),
-        })
+        return JSONResponse(
+            {
+                "endpoints": all_endpoints,
+                "count": len(all_endpoints),
+            }
+        )
 
     async def next_endpoint(request: Request) -> Response:
         """
@@ -82,9 +83,11 @@ def create_health_app(pool: BrowserPool) -> Starlette:
                 status_code=503,
             )
 
-        return JSONResponse({
-            "endpoint": endpoint,
-        })
+        return JSONResponse(
+            {
+                "endpoint": endpoint,
+            }
+        )
 
     def _parse_float(request: Request, name: str):
         raw = request.query_params.get(name)
@@ -92,8 +95,7 @@ def create_health_app(pool: BrowserPool) -> Starlette:
             return None
         v = float(raw)
         if not math.isfinite(v) or v < 0:
-            # Reject inf/nan/negative: an infinite timeout would queue a waiter
-            # that never times out and never cleans up.
+            # Reject values that cannot be used as a timeout.
             raise ValueError(f"{name} must be a finite, non-negative number")
         return v
 
@@ -132,12 +134,14 @@ def create_health_app(pool: BrowserPool) -> Starlette:
                 status_code=503,
             )
 
-        return JSONResponse({
-            "endpoint": lease.endpoint,
-            "lease_id": lease.lease_id,
-            "instance": lease.instance_index,
-            "priority": lease.priority,
-        })
+        return JSONResponse(
+            {
+                "endpoint": lease.endpoint,
+                "lease_id": lease.lease_id,
+                "instance": lease.instance_index,
+                "priority": lease.priority,
+            }
+        )
 
     async def release_lease(request: Request) -> Response:
         """
@@ -208,11 +212,13 @@ def create_health_app(pool: BrowserPool) -> Starlette:
         )
 
         if success:
-            return JSONResponse({
-                "status": "restarted",
-                "index": index,
-                "proxy_rotated": rotate_proxy or blacklist,
-            })
+            return JSONResponse(
+                {
+                    "status": "restarted",
+                    "index": index,
+                    "proxy_rotated": rotate_proxy or blacklist,
+                }
+            )
         else:
             return JSONResponse(
                 {"error": f"Failed to restart instance {index}"},
@@ -226,22 +232,24 @@ def create_health_app(pool: BrowserPool) -> Starlette:
         from . import __version__
 
         proxy_count = len(pool.settings.proxy_list)
-        return JSONResponse({
-            "name": "camoufox-connector",
-            "version": __version__,
-            "mode": pool.settings.mode.value,
-            "pool_size": len(pool.instances),
-            "config": {
-                "headless": pool.settings.headless,
-                "geoip": pool.settings.geoip,
-                "humanize": pool.settings.humanize,
-                "block_images": pool.settings.block_images,
-                "proxy": "configured" if proxy_count else None,
-                "proxy_count": proxy_count,
-                "max_concurrency_per_instance": pool.settings.max_concurrency_per_instance,
-                "preemption": pool.settings.preemption,
-            },
-        })
+        return JSONResponse(
+            {
+                "name": "camoufox-connector",
+                "version": __version__,
+                "mode": pool.settings.mode.value,
+                "pool_size": len(pool.instances),
+                "config": {
+                    "headless": True,
+                    "geoip": pool.settings.geoip,
+                    "humanize": pool.settings.humanize,
+                    "block_images": pool.settings.block_images,
+                    "proxy": "configured" if proxy_count else None,
+                    "proxy_count": proxy_count,
+                    "max_concurrency_per_instance": pool.settings.max_concurrency_per_instance,
+                    "preemption": pool.settings.preemption,
+                },
+            }
+        )
 
     routes = [
         Route("/", info, methods=["GET"]),
