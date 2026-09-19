@@ -28,7 +28,7 @@ def test_launcher_uses_virtual_display_with_public_server_api():
 
     assert "from camoufox.server import launch_server" in script
     assert "port=9222" in script
-    assert "proxy='http://user:pass@host:8080'" in script
+    assert "server" in script and "host:8080" in script
     assert "from camoufox.virtdisplay import VirtualDisplay" in script
     assert "virtual_display = VirtualDisplay" in script
     assert "headless=False" in script

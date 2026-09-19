@@ -85,7 +85,7 @@ def test_geoip_kept_with_proxy_pool():
 def test_to_camoufox_kwargs_per_instance_proxy():
     s = _settings(proxies="http://a:1,http://b:2")
     kw = s.to_camoufox_kwargs(proxy="http://a:1")
-    assert kw["proxy"] == "http://a:1"
+    assert kw["proxy"] == {"server": "http://a:1"}
 
 
 def test_to_camoufox_kwargs_no_proxy_disables_geoip():

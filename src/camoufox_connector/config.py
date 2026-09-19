@@ -272,6 +272,6 @@ class Settings(BaseSettings):
         }
 
         if proxy:
-            kwargs["proxy"] = proxy
+            kwargs["proxy"] = {"server": proxy}
 
         return kwargs
