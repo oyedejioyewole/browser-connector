@@ -8,6 +8,7 @@ on:
       - src/**
       - requirements.txt
       - Dockerfile
+  workflow_dispatch:
 
 env:
   # Use docker.io for Docker Hub if empty
