@@ -6,9 +6,9 @@ on:
     paths:
       - scripts/**
       - src/**
-      - requirements.txt
       - Dockerfile
-  workflow_dispatch:
+      - pyproject.toml
+      - requirements.txt
 
 env:
   # Use docker.io for Docker Hub if empty
@@ -24,6 +24,8 @@ jobs:
     uses: ./.github/workflows/tests.yml
 
   build:
+    name: Build and publish Docker image
+    needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: read
