@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json.schemastore.org/renovate.json",
+  "extends": ["config:recommended"],
+  "labels": ["dependencies"],
+  "packageRules": [
+    {
+      "matchManagers": ["dockerfile", "docker-compose"],
+      "pinDigests": true
+    },
+    {
+      "automerge": true,
+      "matchManagers": ["dockerfile", "docker-compose"],
+      "matchUpdateTypes": ["pin", "pinDigest", "digest"]
+    }
+  ]
+}
