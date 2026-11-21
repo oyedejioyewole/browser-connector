@@ -24,4 +24,4 @@ else
 fi
 
 # Replace the shell with the Python server, so it becomes the main process
-exec /usr/src/app/xvfb-entrypoint.sh "$@"
+exec ./xvfb-entrypoint.sh "$@"
