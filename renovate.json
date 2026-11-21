@@ -4,12 +4,12 @@
   "labels": ["dependencies"],
   "packageRules": [
     {
-      "matchManagers": ["dockerfile", "docker-compose"],
+      "matchManagers": ["dockerfile"],
       "pinDigests": true
     },
     {
       "automerge": true,
-      "matchManagers": ["dockerfile", "docker-compose"],
+      "matchManagers": ["dockerfile"],
       "matchUpdateTypes": ["pin", "pinDigest", "digest"]
     }
   ]
