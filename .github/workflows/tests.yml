@@ -5,6 +5,10 @@ on:
     branches:
       - edge
       - main
+    paths:
+      - "src/**"
+      - "tests/**"
+      - ".github/workflows/tests.yml"
   pull_request:
   # Allow other workflows (e.g. the release/publish flow) to run this as a gate.
   workflow_call:
