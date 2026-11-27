@@ -1,6 +1,6 @@
 # Camoufox Connector - Multi-stage Docker build
 # Apify + Python + Playwright + Camoufox base image
-FROM apify/actor-python-playwright-camoufox:latest@sha256:81e2a96e92952ed6e3c3672e643ef79547c1d1890338d989c70c7ae78df45d86
+FROM apify/actor-python-playwright-camoufox:latest@sha256:cfe620e64e84775d2367d05c6bd850f2dacab16ba11521d90025abd842436315
 
 RUN apt-get update && apt-get install -y --no-install-recommends curl socat && rm -rf /var/lib/apt/lists/*
 
